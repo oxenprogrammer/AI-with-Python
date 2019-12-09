@@ -7,6 +7,7 @@ from torch import nn, optim
 from torchvision import transforms
 from torchvision import models
 
+from collections import OrderedDict
 import json
 from time import time
 from PIL import Image
@@ -17,7 +18,7 @@ def main():
     in_arg = input_args()
     
     # Load checkpoint
-    model = torch.load('check_point.pth')
+    model = load_arch(in_arg.checkpoint_dir, in_arg.arch)
     model.eval()
     
     # Predict class
@@ -54,14 +55,16 @@ def input_args():
     parser.add_argument('--k', type=int, default='5', help='top K predicted classes of image')
     parser.add_argument('--class_name', type=str, default='cat_to_name.json', help='File containing mapping from category label to category name')
     parser.add_argument('--arch', type=str, default='vgg16', help='CNN model for image classification; choose either "vgg16" or "alexnet" only')
+    parser.add_argument('--checkpoint_dir', type=str,default="./checkpoint.pth", help='loads check point')
 
     return parser.parse_args()
 
-def load_arch(arch):
+def load_arch(path_to_checkpoint, arch='vgg16'):
     '''
     Load a pretrained CNN network for image classification; only "vgg16" and "alexnet" can be used
     '''
-    
+    checkpoint = torch.load(path_to_checkpoint)
+
     if arch=='vgg16':
         model = models.vgg16(pretrained=True)
     elif arch=='alexnet':
@@ -71,6 +74,21 @@ def load_arch(arch):
     
     for param in model.parameters():
         param.requires_grad = False
+
+    model.class_to_idx = checkpoint['class_to_idx']
+    
+    classifier = nn.Sequential(OrderedDict([
+                    ('fc1', nn.Linear(25088, 6272)),
+                    ('relu1', nn.ReLU()),
+                    ('drop', nn.Dropout(p=0.75)),
+                    ('fc2', nn.Linear(6272, 3136)),
+                    ('relu2', nn.ReLU()),
+                    ('drop', nn.Dropout(p=0.75)),
+                    ('fc3', nn.Linear(3136, 102)),
+                    ('output', nn.LogSoftmax(dim=1))
+                ]))
+    model.classifier = classifier
+    model.load_state_dict(checkpoint['state_dict'])
         
     return model
 
